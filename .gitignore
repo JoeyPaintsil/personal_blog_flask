@@ -1,0 +1,3 @@
+# adding venv to gitignore
+venv/
+posts.db
