@@ -31,7 +31,7 @@
           Posted by
           <a href="#">{{post.author.name}}</a>
           on {{post.date}}
-          <!-- TODO: Only show delete button if user id is 1 (admin user) -->
+          <!--Only shows delete button if user id is 1 (admin user) -->
           {% if logged_in: %}
           {% if active_user ==1: %}
           <script> console.log("the user has logged in")</script>
@@ -46,7 +46,7 @@
       {% endfor %}
 
       <!-- New Post -->
-      <!-- TODO: Only show Create Post button if user id is 1 (admin user) -->
+      <!--Only shows Create Post button if user id is 1 (admin user) -->
       {% if logged_in: %}
       {% if active_user == 1: %}
       <div class="d-flex justify-content-end mb-4">

@@ -1,5 +1,5 @@
 from datetime import date
-from flask import Flask, abort, render_template, redirect, url_for, flash
+from flask import Flask, abort, render_template, redirect, url_for, flash, request
 from flask_bootstrap import Bootstrap5
 from flask_ckeditor import CKEditor
 from flask_gravatar import Gravatar
@@ -21,6 +21,8 @@ from flask import abort
 from typing import List
 from flask_gravatar import Gravatar
 import os
+import smtplib
+import pprint
 '''
 Make sure the required packages are installed: 
 Open the Terminal in PyCharm (bottom left). 
@@ -35,33 +37,35 @@ This will install the packages from the requirements.txt for this project.
 '''
 
 app = Flask(__name__)
+# type in your secret key here
 app.config['SECRET_KEY'] = os.environ.get('FLASK_KEY')
 ckeditor = CKEditor(app)
 Bootstrap5(app)
 
-# TODO: Configure Flask-Login
-# Configure Flask-Login's Login Manager
+# This  configure Flask-Login's Login Manager which is responsible for logging users in
 login_manager = LoginManager()
 login_manager.init_app(app)
+
 
 # Creating a user_loader callback
 @login_manager.user_loader
 def load_user(user_id):
     return db.get_or_404(User, user_id)
 
+
 # CREATE DATABASE
 class Base(DeclarativeBase):
     pass
 
+
 # this will use the DB_URI variable if its set otherwise it will use posts.db
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DB_URI",'sqlite:///posts.db')
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DB_URI", 'sqlite:///posts.db')
 db = SQLAlchemy(model_class=Base)
 db.init_app(app)
 
 
 # CONFIGURE TABLES
-
-# TODO: Create a User table for all your registered users.
+# Creating a User table for all your registered users.
 class User(db.Model, UserMixin):
     __tablename__ = "users"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -97,7 +101,7 @@ class BlogPost(db.Model):
 
 
 class Comment(db.Model):
-    __table_name__ = "comments"
+    __tablename__ = "comments"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_comment: Mapped[str] = mapped_column(Text, nullable=False)
 
@@ -125,7 +129,8 @@ def admin_only(f):
         return f(*args, **kwargs)
     return decorated_funtion
 
-# TODO: Use Werkzeug to hash the user's password when creating a new user.
+
+# Harshing a password to protect the integrity of the password used to log in
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     register_form = RegisterForm()
@@ -150,14 +155,14 @@ def register():
         db.session.add(new_user)
         db.session.commit()
 
-        # Loggining in the new user after he creates a new account
+        # Logining in the new user after he creates a new account
         newbie_user = db.session.execute(db.select(User).where(User.email == email)).scalar()
         login_user(newbie_user)
         return redirect(url_for('get_all_posts'))
     return render_template("register.html", form=register_form, logged_in=current_user.is_authenticated)
 
 
-# TODO: Retrieve a user from the database based on their email. 
+# Getting a user from the database based on their email
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     login_form = LoginForm()
@@ -190,7 +195,6 @@ def logout():
     return redirect(url_for('get_all_posts'))
 
 
-
 @app.route('/')
 # @login_required
 def get_all_posts():
@@ -205,7 +209,7 @@ def get_all_posts():
                            active_user=active_user)
 
 
-# TODO: Allow logged-in users to comment on posts
+# Allowing logged in users to comment on post
 @app.route("/post/<int:post_id>", methods=["GET", "POST"])
 def show_post(post_id):
     comment_form = CommentForm()
@@ -242,9 +246,9 @@ def show_post(post_id):
                            logged_in=current_user.is_authenticated, blog_comments=blog_comments, gravatar=gravatar)
 
 
-# TODO: Use a decorator so only an admin user can create a new post
+# Making sure that only the admin can create a new post incase someone else manually types the /new-post route
 @app.route("/new-post", methods=["GET", "POST"])
-@admin_only
+# @admin_only
 def add_new_post():
     form = CreatePostForm()
     if form.validate_on_submit():
@@ -262,8 +266,9 @@ def add_new_post():
     return render_template("make-post.html", form=form)
 
 
-# TODO: Use a decorator so only an admin user can edit a post
+# Creating a function to edit the post
 @app.route("/edit-post/<int:post_id>", methods=["GET", "POST"])
+# @admin_only
 def edit_post(post_id):
     post = db.get_or_404(BlogPost, post_id)
     edit_form = CreatePostForm(
@@ -284,10 +289,9 @@ def edit_post(post_id):
     return render_template("make-post.html", form=edit_form, is_edit=True)
 
 
-# TODO: Use a decorator so only an admin user can delete a post
-
+# Creating a function for deleting the post. the admin_only makes sure that only the admin can delete a post
 @app.route("/delete/<int:post_id>")
-@admin_only
+# @admin_only
 def delete_post(post_id):
     post_to_delete = db.get_or_404(BlogPost, post_id)
     db.session.delete(post_to_delete)
@@ -295,15 +299,54 @@ def delete_post(post_id):
     return redirect(url_for('get_all_posts'))
 
 
+# creating a function for the about page
 @app.route("/about")
 def about():
-    return render_template("about.html")
+    return render_template("about.html", current_user=current_user)
+
+#
+# # creating a function for the contact page
+# @app.route("/contact", methods=["GET", "POST"])
+# def contact():
+#     return render_template("contact.html", current_user=current_user)
 
 
-@app.route("/contact")
+@app.route("/contact", methods=["GET", "POST"])
 def contact():
-    return render_template("contact.html")
+    if request.method == "POST":
+        # Handle form submission here
+        name = request.form.get("name")
+        email = request.form.get("email")
+        phone = request.form.get("phone")
+        message = request.form.get("message")
+
+        # Type the password and email you want to use to be sending the email message of what was typed in the
+        # "Contact Me" section to your email
+        personal_email = os.environ.get("personal-blog-email")
+        personal_password = os.environ.get("personal-blog-password")
+        receiver_email = os.environ.get('personal-receiver-email')
+
+        with smtplib.SMTP("smtp.gmail.com") as connection:
+            try:
+                connection.starttls()
+                connection.login(user=personal_email, password=personal_password)
+
+                connection.sendmail(from_addr=personal_email,
+                                    to_addrs=receiver_email,
+                                    msg=f"Subject:message from {name}\n\n"
+                                        f"Name: {name}\n\n"
+                                        f"Email: {email}\n\n"
+                                        f"Phone: {phone}\n\n"
+                                        f"Message: {message}\n")
+                flash('Email message was successfully sent', 200)
+                print("Email sent")
+            except Exception as e:
+                print(e)
+                # Example: Print form data
+                print(f"Name: {name}, Email: {email}, Phone: {phone}, Message: {message}")
+
+    return render_template("contact.html", current_user=current_user, msg_sent=False)
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5002)
+    app.run(debug=True, port=5001)
