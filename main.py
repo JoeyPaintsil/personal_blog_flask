@@ -101,7 +101,7 @@ class BlogPost(db.Model):
 
 
 class Comment(db.Model):
-    __tablename__ = "comments"
+    __table_name__ = "comments"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_comment: Mapped[str] = mapped_column(Text, nullable=False)
 
@@ -235,7 +235,7 @@ def show_post(post_id):
             )
             db.session.add(new_comment)
             db.session.commit()
-            flash('Your comment has been added successfully')
+            # flash('Your comment has been added successfully')
             return redirect(url_for('show_post', post_id=post_id))
         else:
             if not current_user.is_authenticated:
@@ -293,10 +293,21 @@ def edit_post(post_id):
 @app.route("/delete/<int:post_id>")
 # @admin_only
 def delete_post(post_id):
+    # deleting the comments in the blog
+    comments_to_delete = db.session.execute(db.select(Comment).where(Comment.blog_id == post_id)).scalars()
+    for comment in comments_to_delete:
+        db.session.delete(comment)
+    db.session.commit()
+
     post_to_delete = db.get_or_404(BlogPost, post_id)
     db.session.delete(post_to_delete)
     db.session.commit()
     return redirect(url_for('get_all_posts'))
+
+
+# # deleting a comment
+# @app.route("/delete")
+# def delete_comment():
 
 
 # creating a function for the about page
@@ -348,5 +359,26 @@ def contact():
     return render_template("contact.html", current_user=current_user, msg_sent=False)
 
 
+@app.route('/edit_comment/<int:post_id>/<int:comment_id>', methods=['GET', 'POST'])
+def edit_comment(comment_id, post_id):
+    comment = Comment.query.get_or_404(comment_id)
+    comment_form = CommentForm(
+        comment=comment.user_comment
+    )
+    if comment_form.validate_on_submit():
+        comment.user_comment=comment_form.comment.data
+        db.session.commit()
+        return redirect(url_for('show_post', post_id=post_id))
+    return render_template('edit_comment.html', comment_form=comment_form)
+
+
+@app.route('/delete_comment/<int:post_id>/<int:comment_id>', methods=['GET', 'POST'])
+def delete_comment(comment_id, post_id):
+    comment = Comment.query.get_or_404(comment_id)
+    print(comment)
+    db.session.delete(comment)
+    db.session.commit()
+    return redirect(url_for('show_post', post_id=post_id))
+
 if __name__ == "__main__":
-    app.run(debug=True, port=5001)
+    app.run(debug=True, port=5002)
